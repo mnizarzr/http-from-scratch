@@ -40,16 +40,22 @@ func main() {
 	lines := strings.Split(req, CRLF)
 	path := strings.Split(lines[0], " ")[1] // 0 = method, 1 = path, 2 = protocol and or version
 	parameter := strings.Split(path, "/")
-	if len(parameter) > 1 {
-		fmt.Println("Parameter: ", parameter[1])
-	}
 
-	res := "HTTP/1.1 404 Not Found\r\n\r\n"
+	resStatus := "HTTP/1.1 404 Not Found" + CRLF
+	resHeaders := CRLF
+	var resBody string
+
 	if path == "/" {
-		res = "HTTP/1.1 200 OK\r\n\r\n"
+		resStatus = "HTTP/1.1 200 OK" + CRLF
+	} else if strings.HasPrefix(path, "/echo/") {
+		resStatus = "HTTP/1.1 200 OK" + CRLF
+		resHeaders = "Content-Type: text/plain" + CRLF
+		resHeaders += "Content-Length: " + fmt.Sprintf("%d", len(parameter[2])) + CRLF
+		resHeaders += CRLF
+		resBody = parameter[2]
 	}
 
-	_, err = conn.Write([]byte(res))
+	_, err = conn.Write([]byte(resStatus + resHeaders + resBody))
 	if err != nil {
 		fmt.Println("Error writing to connection: ", err.Error())
 		os.Exit(1)
