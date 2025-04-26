@@ -39,6 +39,10 @@ func main() {
 	req := string(buff)
 	lines := strings.Split(req, CRLF)
 	path := strings.Split(lines[0], " ")[1] // 0 = method, 1 = path, 2 = protocol and or version
+	parameter := strings.Split(path, "/")
+	if len(parameter) > 1 {
+		fmt.Println("Parameter: ", parameter[1])
+	}
 
 	res := "HTTP/1.1 404 Not Found\r\n\r\n"
 	if path == "/" {
