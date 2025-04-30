@@ -77,8 +77,21 @@ func handleConnection(conn net.Conn) {
 		if request == nil {
 			break
 		}
+		closeConn := false
+		if val, ok := request.headers["Connection"]; ok {
+			if val == "close" {
+				closeConn = true
+			}
+		}
 		response := handleRequest(request)
 		writeResponse(conn, response)
+		if closeConn {
+			err := conn.Close()
+			if err != nil {
+				fmt.Println("Error closing connection: ", err.Error())
+			}
+			break
+		}
 	}
 }
 
