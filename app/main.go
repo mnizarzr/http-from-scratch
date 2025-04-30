@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -24,7 +25,20 @@ type Response struct {
 	body       string
 }
 
+var (
+	StaticFileDirectory string
+)
+
 func main() {
+
+	flag.StringVar(&StaticFileDirectory, "directory", "", "Static Directory")
+	flag.Parse()
+
+	if StaticFileDirectory != "" {
+		fmt.Println("Static directory set to ", StaticFileDirectory)
+	} else if StaticFileDirectory != "" && StaticFileDirectory[len(StaticFileDirectory)-1:] == "/" { // if no trailing slash, add it
+		StaticFileDirectory = StaticFileDirectory + "/"
+	}
 
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
@@ -112,6 +126,16 @@ func handleRequest(conn net.Conn, req *Request) {
 		response = makeResponse(Response{body: parts[2]})
 	} else if req.path == "/user-agent" {
 		response = makeResponse(Response{body: req.headers["User-Agent"]})
+	} else if strings.HasPrefix(req.path, "/files/") {
+		filePath := fmt.Sprintf("%s%s", StaticFileDirectory, strings.TrimPrefix(req.path, "/files/"))
+		fileContent, err := os.ReadFile(filePath)
+		if err != nil {
+			response = makeResponse(Response{statusCode: 404, body: "File not found"})
+		} else {
+			response = makeResponse(Response{statusCode: 200, headers: map[string]string{
+				"Content-Type": "application/octet-stream",
+			}, body: string(fileContent)})
+		}
 	} else {
 		response = makeResponse(Response{statusCode: 404})
 	}
