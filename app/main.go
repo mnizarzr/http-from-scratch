@@ -39,17 +39,20 @@ func main() {
 		}
 	}(l)
 
-	conn, err := l.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
-	}
+	fmt.Println("Listening on :4221")
 
-	req := readRequest(conn)
-	handleRequest(conn, req)
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection: ", err.Error())
+			os.Exit(1)
+		}
+
+		go readRequest(conn)
+	}
 }
 
-func readRequest(conn net.Conn) *Request {
+func readRequest(conn net.Conn) {
 
 	reader := bufio.NewReader(conn)
 
@@ -91,13 +94,13 @@ func readRequest(conn net.Conn) *Request {
 		os.Exit(1)
 	}
 
-	return &Request{
+	handleRequest(conn, &Request{
 		method:   parts[0],
 		path:     parts[1],
 		protocol: parts[2],
 		headers:  headers,
 		body:     body,
-	}
+	})
 }
 
 func handleRequest(conn net.Conn, req *Request) {
