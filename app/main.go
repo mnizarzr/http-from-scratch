@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -76,6 +77,11 @@ func readRequest(conn net.Conn) {
 		fmt.Println("Error reading request: ", err.Error())
 		os.Exit(1)
 	}
+	parts := strings.Split(firstLine, " ")
+	if len(parts) != 3 {
+		fmt.Println("Error invalid request: ", firstLine)
+		os.Exit(1)
+	}
 
 	headers := make(map[string]string)
 	// headers
@@ -101,11 +107,22 @@ func readRequest(conn net.Conn) {
 		headers[key] = value
 	}
 
-	body := ""
-	parts := strings.Split(firstLine, " ")
-	if len(parts) != 3 {
-		fmt.Println("Error invalid request: ", firstLine)
-		os.Exit(1)
+	var buff []byte
+	if val, ok := headers["Content-Length"]; ok {
+		length, err := strconv.Atoi(val)
+		if err != nil {
+			fmt.Println("Error parsing Content-Length: ", err.Error())
+		}
+		buff = make([]byte, length)
+	}
+
+	var body string
+	if buff != nil {
+		_, err := reader.Read(buff)
+		if err != nil {
+			fmt.Println("Error reading body: ", err.Error())
+		}
+		body = string(buff)
 	}
 
 	handleRequest(conn, &Request{
@@ -126,7 +143,7 @@ func handleRequest(conn net.Conn, req *Request) {
 		response = makeResponse(Response{body: parts[2]})
 	} else if req.path == "/user-agent" {
 		response = makeResponse(Response{body: req.headers["User-Agent"]})
-	} else if strings.HasPrefix(req.path, "/files/") {
+	} else if req.method == "GET" && strings.HasPrefix(req.path, "/files/") {
 		filePath := fmt.Sprintf("%s%s", StaticFileDirectory, strings.TrimPrefix(req.path, "/files/"))
 		fileContent, err := os.ReadFile(filePath)
 		if err != nil {
@@ -135,6 +152,14 @@ func handleRequest(conn net.Conn, req *Request) {
 			response = makeResponse(Response{statusCode: 200, headers: map[string]string{
 				"Content-Type": "application/octet-stream",
 			}, body: string(fileContent)})
+		}
+	} else if req.method == "POST" && strings.HasPrefix(req.path, "/files/") {
+		filePath := fmt.Sprintf("%s%s", StaticFileDirectory, strings.TrimPrefix(req.path, "/files/"))
+		err := os.WriteFile(filePath, []byte(req.body), 0644)
+		if err != nil {
+			response = makeResponse(Response{statusCode: 500})
+		} else {
+			response = makeResponse(Response{statusCode: 201})
 		}
 	} else {
 		response = makeResponse(Response{statusCode: 404})
@@ -165,16 +190,18 @@ func makeResponse(res Response) Response {
 		res.protocol = "HTTP/1.1" // default
 	}
 
-	if res.statusCode == 0 {
+	switch res.statusCode {
+	case 0:
 		res.statusCode = 200
-	}
-
-	if res.statusText == "" {
-		if res.statusCode == 200 {
-			res.statusText = "OK"
-		} else if res.statusCode == 404 {
-			res.statusText = "Not Found"
-		}
+		res.statusText = "OK"
+	case 200:
+		res.statusText = "OK"
+	case 201:
+		res.statusText = "Created"
+	case 404:
+		res.statusText = "Not Found"
+	case 500:
+		res.statusText = "Internal Server Error"
 	}
 
 	if res.headers == nil {
