@@ -172,7 +172,7 @@ func handleRequest(conn net.Conn, req *Request) {
 		}
 		firstSupported := supportedCompression(vals)
 		if firstSupported != nil {
-			response.headers["Accept-Encoding"] = *firstSupported
+			response.headers["Content-Encoding"] = *firstSupported
 		}
 	}
 
