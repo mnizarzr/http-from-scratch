@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -66,16 +67,30 @@ func main() {
 			os.Exit(1)
 		}
 
-		go readRequest(conn)
+		go handleConnection(conn)
 	}
 }
 
-func readRequest(conn net.Conn) {
+func handleConnection(conn net.Conn) {
+	for {
+		request := readRequest(conn)
+		if request == nil {
+			break
+		}
+		response := handleRequest(request)
+		writeResponse(conn, response)
+	}
+}
+
+func readRequest(conn net.Conn) *Request {
 
 	reader := bufio.NewReader(conn)
 
 	// first line = GET /path HTTP/1.1
 	firstLine, err := reader.ReadString('\n')
+	if err == io.EOF {
+		return nil
+	}
 	if err != nil {
 		fmt.Println("Error reading request: ", err.Error())
 		os.Exit(1)
@@ -128,16 +143,16 @@ func readRequest(conn net.Conn) {
 		body = string(buff)
 	}
 
-	handleRequest(conn, &Request{
+	return &Request{
 		method:   parts[0],
 		path:     parts[1],
 		protocol: parts[2],
 		headers:  headers,
 		body:     body,
-	})
+	}
 }
 
-func handleRequest(conn net.Conn, req *Request) {
+func handleRequest(req *Request) *Response {
 	var response Response
 	if req.path == "/" {
 		response = makeResponse(Response{})
@@ -185,7 +200,7 @@ func handleRequest(conn net.Conn, req *Request) {
 		}
 	}
 
-	writeResponse(conn, response)
+	return &response
 }
 
 func gzipCompress(text string) string {
@@ -213,7 +228,7 @@ func supportedCompression(schemes []string) string {
 	return comp[0]
 }
 
-func writeResponse(conn net.Conn, res Response) {
+func writeResponse(conn net.Conn, res *Response) {
 	_, err := fmt.Fprintf(conn, "%s %d %s\r\n", res.protocol, res.statusCode, res.statusText)
 	if err != nil {
 		fmt.Println("Error writing response: ", err.Error())
