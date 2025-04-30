@@ -165,6 +165,12 @@ func handleRequest(conn net.Conn, req *Request) {
 		response = makeResponse(Response{statusCode: 404})
 	}
 
+	if val, ok := req.headers["Accept-Encoding"]; ok {
+		if val == "gzip" {
+			response.headers["Content-Encoding"] = "gzip"
+		}
+	}
+
 	writeResponse(conn, response)
 }
 
