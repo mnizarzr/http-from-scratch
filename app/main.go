@@ -73,15 +73,9 @@ func main() {
 
 func handleConnection(conn net.Conn) {
 	for {
-		request := readRequest(conn)
+		request, closeConn := readRequest(conn)
 		if request == nil {
 			break
-		}
-		closeConn := false
-		if val, ok := request.headers["Connection"]; ok {
-			if val == "close" {
-				closeConn = true
-			}
 		}
 		response := handleRequest(request)
 		writeResponse(conn, response)
@@ -95,14 +89,14 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-func readRequest(conn net.Conn) *Request {
-
+func readRequest(conn net.Conn) (*Request, bool) {
+	var closeNext = false
 	reader := bufio.NewReader(conn)
 
 	// first line = GET /path HTTP/1.1
 	firstLine, err := reader.ReadString('\n')
 	if err == io.EOF {
-		return nil
+		return nil, false
 	}
 	if err != nil {
 		fmt.Println("Error reading request: ", err.Error())
@@ -147,6 +141,12 @@ func readRequest(conn net.Conn) *Request {
 		buff = make([]byte, length)
 	}
 
+	if val, ok := headers["Connection"]; ok {
+		if val == "close" {
+			closeNext = true
+		}
+	}
+
 	var body string
 	if buff != nil {
 		_, err := reader.Read(buff)
@@ -162,7 +162,7 @@ func readRequest(conn net.Conn) *Request {
 		protocol: parts[2],
 		headers:  headers,
 		body:     body,
-	}
+	}, closeNext
 }
 
 func handleRequest(req *Request) *Response {
@@ -211,6 +211,10 @@ func handleRequest(req *Request) *Response {
 			fmt.Printf("%s", response.body)
 			response.headers["Content-Length"] = fmt.Sprintf("%d", len(response.body))
 		}
+	}
+
+	if val, ok := req.headers["Connection"]; ok {
+		response.headers["Connection"] = val
 	}
 
 	return &response
