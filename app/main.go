@@ -182,7 +182,9 @@ func makeResponse(res Response) Response {
 	}
 
 	if res.body != "" {
-		res.headers["Content-Type"] = "text/plain"
+		if _, ok := res.headers["Content-Type"]; !ok {
+			res.headers["Content-Type"] = "text/plain"
+		}
 		res.headers["Content-Length"] = fmt.Sprintf("%d", len(res.body))
 	}
 
