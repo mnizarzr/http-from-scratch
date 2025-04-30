@@ -166,12 +166,26 @@ func handleRequest(conn net.Conn, req *Request) {
 	}
 
 	if val, ok := req.headers["Accept-Encoding"]; ok {
-		if val == "gzip" {
-			response.headers["Content-Encoding"] = "gzip"
+		vals := strings.Split(val, ",")
+		for i := range vals {
+			vals[i] = strings.TrimSpace(vals[i])
+		}
+		firstSupported := supportedCompression(vals)
+		if firstSupported != nil {
+			response.headers["Accept-Encoding"] = *firstSupported
 		}
 	}
 
 	writeResponse(conn, response)
+}
+
+func supportedCompression(schemes []string) *string {
+	if len(schemes) == 0 {
+		return nil
+	}
+	compressions := []string{"gzip"}
+	comp := Intersection(schemes, compressions)
+	return &comp[0]
 }
 
 func writeResponse(conn net.Conn, res Response) {
@@ -222,4 +236,23 @@ func makeResponse(res Response) Response {
 	}
 
 	return res
+}
+
+func Intersection[T comparable](slices ...[]T) []T {
+	counts := map[T]int{}
+	var result []T
+
+	for _, slice := range slices {
+		for _, val := range slice {
+			counts[val]++
+		}
+	}
+
+	for val, count := range counts {
+		if count == len(slices) {
+			result = append(result, val)
+		}
+	}
+
+	return result
 }
