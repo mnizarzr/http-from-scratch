@@ -2,8 +2,11 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
 	"flag"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"strconv"
@@ -139,8 +142,8 @@ func handleRequest(conn net.Conn, req *Request) {
 	if req.path == "/" {
 		response = makeResponse(Response{})
 	} else if strings.HasPrefix(req.path, "/echo/") {
-		parts := strings.Split(req.path, "/")
-		response = makeResponse(Response{body: parts[2]})
+		param := strings.Split(req.path, "/")[2]
+		response = makeResponse(Response{body: param})
 	} else if req.path == "/user-agent" {
 		response = makeResponse(Response{body: req.headers["User-Agent"]})
 	} else if req.method == "GET" && strings.HasPrefix(req.path, "/files/") {
@@ -171,24 +174,43 @@ func handleRequest(conn net.Conn, req *Request) {
 			vals[i] = strings.TrimSpace(vals[i])
 		}
 		firstSupported := supportedCompression(vals)
-		if firstSupported != nil {
-			response.headers["Content-Encoding"] = *firstSupported
+		if firstSupported != "" {
+			response.headers["Content-Encoding"] = firstSupported
+		}
+
+		if firstSupported == "gzip" {
+			response.body = gzipCompress(response.body)
+			fmt.Printf("%s", response.body)
+			response.headers["Content-Length"] = fmt.Sprintf("%d", len(response.body))
 		}
 	}
 
 	writeResponse(conn, response)
 }
 
-func supportedCompression(schemes []string) *string {
+func gzipCompress(text string) string {
+	var b bytes.Buffer
+	zw := gzip.NewWriter(&b)
+	_, err := zw.Write([]byte(text))
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		log.Fatal(err)
+	}
+	return b.String()
+}
+
+func supportedCompression(schemes []string) string {
 	if len(schemes) == 0 {
-		return nil
+		return ""
 	}
 	compressions := []string{"gzip"}
 	comp := Intersection(schemes, compressions)
 	if comp == nil {
-		return nil
+		return ""
 	}
-	return &comp[0]
+	return comp[0]
 }
 
 func writeResponse(conn net.Conn, res Response) {
