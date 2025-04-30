@@ -155,7 +155,7 @@ func makeResponse(res Response) Response {
 	}
 
 	if res.body != "" {
-		res.headers["Content-Type"] = "text/html; charset=utf-8"
+		res.headers["Content-Type"] = "text/plain"
 		res.headers["Content-Length"] = fmt.Sprintf("%d", len(res.body))
 	}
 
