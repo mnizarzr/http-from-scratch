@@ -185,6 +185,9 @@ func supportedCompression(schemes []string) *string {
 	}
 	compressions := []string{"gzip"}
 	comp := Intersection(schemes, compressions)
+	if comp == nil {
+		return nil
+	}
 	return &comp[0]
 }
 
