@@ -1,13 +1,28 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"os"
 	"strings"
 )
 
-const CRLF = "\r\n"
+type Request struct {
+	method   string
+	path     string
+	protocol string
+	headers  map[string]string
+	body     string
+}
+
+type Response struct {
+	protocol   string
+	statusCode int
+	statusText string
+	headers    map[string]string
+	body       string
+}
 
 func main() {
 
@@ -30,35 +45,119 @@ func main() {
 		os.Exit(1)
 	}
 
-	buff := make([]byte, 1024)
-	_, err = conn.Read(buff)
+	req := readRequest(conn)
+	handleRequest(conn, req)
+}
+
+func readRequest(conn net.Conn) *Request {
+
+	reader := bufio.NewReader(conn)
+
+	// first line = GET /path HTTP/1.1
+	firstLine, err := reader.ReadString('\n')
 	if err != nil {
-		fmt.Println("Error reading from connection: ", err.Error())
-	}
-
-	req := string(buff)
-	lines := strings.Split(req, CRLF)
-	path := strings.Split(lines[0], " ")[1] // 0 = method, 1 = path, 2 = protocol and or version
-	parameter := strings.Split(path, "/")
-
-	resStatus := "HTTP/1.1 404 Not Found" + CRLF
-	resHeaders := CRLF
-	var resBody string
-
-	if path == "/" {
-		resStatus = "HTTP/1.1 200 OK" + CRLF
-	} else if strings.HasPrefix(path, "/echo/") {
-		resStatus = "HTTP/1.1 200 OK" + CRLF
-		resHeaders = "Content-Type: text/plain" + CRLF
-		resHeaders += "Content-Length: " + fmt.Sprintf("%d", len(parameter[2])) + CRLF
-		resHeaders += CRLF
-		resBody = parameter[2]
-	}
-
-	_, err = conn.Write([]byte(resStatus + resHeaders + resBody))
-	if err != nil {
-		fmt.Println("Error writing to connection: ", err.Error())
+		fmt.Println("Error reading request: ", err.Error())
 		os.Exit(1)
 	}
 
+	headers := make(map[string]string)
+	// headers
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Println("Error reading request: ", err.Error())
+			os.Exit(1)
+		}
+		line = strings.TrimSpace(line)
+
+		// if line break or empty line then header end or doesnt exist
+		if line == "\r\n" || line == "" {
+			break
+		}
+
+		colonIdx := strings.Index(line, ":")
+		if colonIdx == -1 { // if no colon then it's not header
+			continue
+		}
+		key := strings.TrimSpace(line[:colonIdx])
+		value := strings.TrimSpace(line[colonIdx+1:])
+		headers[key] = value
+	}
+
+	body := ""
+	parts := strings.Split(firstLine, " ")
+	if len(parts) != 3 {
+		fmt.Println("Error invalid request: ", firstLine)
+		os.Exit(1)
+	}
+
+	return &Request{
+		method:   parts[0],
+		path:     parts[1],
+		protocol: parts[2],
+		headers:  headers,
+		body:     body,
+	}
+}
+
+func handleRequest(conn net.Conn, req *Request) {
+	var response Response
+	if req.path == "/" {
+		response = makeResponse(Response{})
+	} else if strings.HasPrefix(req.path, "/echo/") {
+		parts := strings.Split(req.path, "/")
+		response = makeResponse(Response{body: parts[2]})
+	} else if req.path == "/user-agent" {
+		response = makeResponse(Response{body: req.headers["User-Agent"]})
+	} else {
+		response = makeResponse(Response{statusCode: 404})
+	}
+
+	writeResponse(conn, response)
+}
+
+func writeResponse(conn net.Conn, res Response) {
+	_, err := fmt.Fprintf(conn, "%s %d %s\r\n", res.protocol, res.statusCode, res.statusText)
+	if err != nil {
+		fmt.Println("Error writing response: ", err.Error())
+	}
+	for key, value := range res.headers {
+		_, err := fmt.Fprintf(conn, "%s: %s\r\n", key, value)
+		if err != nil {
+			fmt.Println("Error writing response: ", err.Error())
+		}
+	}
+	_, err = fmt.Fprintf(conn, "\r\n%s", res.body) // line break from as the end of headers then body
+	if err != nil {
+		fmt.Println("Error writing response: ", err.Error())
+	}
+}
+
+func makeResponse(res Response) Response {
+	if res.protocol == "" {
+		res.protocol = "HTTP/1.1" // default
+	}
+
+	if res.statusCode == 0 {
+		res.statusCode = 200
+	}
+
+	if res.statusText == "" {
+		if res.statusCode == 200 {
+			res.statusText = "OK"
+		} else if res.statusCode == 404 {
+			res.statusText = "Not Found"
+		}
+	}
+
+	if res.headers == nil {
+		res.headers = make(map[string]string)
+	}
+
+	if res.body != "" {
+		res.headers["Content-Type"] = "text/html; charset=utf-8"
+		res.headers["Content-Length"] = fmt.Sprintf("%d", len(res.body))
+	}
+
+	return res
 }
